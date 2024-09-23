@@ -1,0 +1,882 @@
+const express = require('express');
+const router = express.Router();
+const LeaveRequest = require('../models/LeaveRequest');
+const nodemailer = require('nodemailer');
+const Register = require('../models/registrations');
+const auth = require('../env.js');
+
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: auth.EMAIL_USER,
+    pass: auth.EMAIL_PASS,
+  },
+});
+
+let accepted = false; // Global flag to check if the request has been accepted
+
+router.post('/', async (req, res) => {
+  const { name, email, branch, facultyId, startDate, endDate, reason } = req.body;
+
+  try {
+    // Save the leave request to the database
+    const register=new Register({name,email,facultyId,branch})
+    const leaveRequest = new LeaveRequest({ name, email, branch, facultyId, startDate, endDate, reason });
+    await leaveRequest.save();
+
+    // Fetch all users' emails to whom the leave request should be sent
+    const users = await Register.find({}, 'email');
+    const emailAddresses = users
+      .filter(user => user.email !== email) // Case 1: Exclude the requester's email
+      .map(user => user.email);
+
+    const emailMessage = `
+      <h3>Leave Request from ${name}</h3>
+      <p>Reason: ${reason}</p>
+      <p>Start Date: ${startDate}</p>
+      <p>End Date: ${endDate}</p>
+      <p>
+        <button><a href="http://localhost:5000/api/leave/accept/${leaveRequest._id}?name=${name}">Accept</a></button>
+      </p>
+    `;
+    // <a href="http://localhost:5000/api/leave/decline/${leaveRequest._id}?name=${name}">Decline</a>
+
+    // Send the leave request email to all users except the requester
+    const emailPromises = emailAddresses.map(email => {
+      return transporter.sendMail({
+        from: auth.EMAIL_USER,
+        to: email,
+        subject: 'New Leave Request',
+        html: emailMessage,
+      });
+    });
+
+    await Promise.all(emailPromises);
+
+    res.status(201).json({ message: `Leave request submitted and emails sent to ${emailAddresses.length} users.` });
+  } catch (error) {
+    console.error('Error submitting leave request:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+router.get('/accept/:id', async (req, res) => {
+  // if (accepted) {
+  //   return res.send("Someone already accepted this leave request.");
+  // }
+  try {
+    const leaveRequest = await LeaveRequest.findById(req.params.id);
+    if (!leaveRequest) return res.status(404).send('Leave request not found.');
+    
+    accepted = true; // Mark the request as accepted
+    leaveRequest.status = 'Accepted';
+    await leaveRequest.save();
+
+    
+    leaveRequest.status = 'Accepted';
+    await leaveRequest.save();
+
+    // Send email to the requester
+    await transporter.sendMail({
+      from: auth.EMAIL_USER,
+      to: leaveRequest.email,
+      subject: 'Leave Request Accepted',
+      html: `<p>Your leave request has been accepted by ${req.query.name}.</p>`,
+    });
+
+    res.send(`Thank you..🙂.for Accepted the leave requested from ${req.query.name}`);
+  } catch (error) {
+    console.error('Error updating leave request:', error);
+    res.status(500).send('Error updating leave request');
+  }
+});
+
+// router.get('/decline/:id', async (req, res) => {
+//   if (accepted) {
+//     return res.send("Someone already accepted this leave request.");
+//   }
+
+//   try {
+//     const leaveRequest = await LeaveRequest.findById(req.params.id);
+//     if (!leaveRequest) return res.status(404).send('Leave request not found.');
+
+//     leaveRequest.status = 'Declined';
+//     await leaveRequest.save();
+
+//     // Send email to the requester
+//     await transporter.sendMail({
+//       from: auth.EMAIL_USER,
+//       to: leaveRequest.email,
+//       subject: 'Leave Request Declined',
+//       html: `<p>Your leave request has been declined by ${req.query.name}.</p>`,
+//     });
+
+//     res.send(`Declined by ${req.query.name}`);
+//   } catch (error) {
+//     console.error('Error updating leave request:', error);
+//     res.status(500).send('Error updating leave request');
+//   }
+// });
+
+module.exports = router;
+
+
+
+//19-08-2024 nodemailer-------------------------------------------------------------------------------------------->
+
+const express = require('express');
+const router = express.Router();
+const LeaveRequest = require('../models/LeaveRequest');
+const nodemailer = require('nodemailer');
+const registers = require('../models/registrations');
+const auth = require('../env.js');
+
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: auth.EMAIL_USER,
+    pass: auth.EMAIL_PASS,
+  },
+});
+
+let accepted = false; // Global flag to check if the request has been accepted
+
+router.post('/', async (req, res) => {
+  const { name, email, branch, facultyId, startDate, endDate, reason } = req.body;
+
+  try {
+    // Save the leave request to the database
+    const leaveRequest = new LeaveRequest({ name, email, branch, facultyId, startDate, endDate, reason });
+    await leaveRequest.save();
+
+    // Fetch all users' emails to whom the leave request should be sent
+    const users = await registers.find({ email: { $ne: email } }, 'email'); // Exclude the requester
+    const emailAddresses = users.map(user => user.email);
+      //  const users = await Registers.find({}, 'email'); 
+      //  const emailAddresses = users.map(user => user.email);
+
+    const emailMessage = `
+      <h3>Leave Request from ${name}</h3>
+      <p>Reason: ${reason}</p>
+      <p>Start Date: ${startDate}</p>
+      <p>End Date: ${endDate}</p>
+      <p>
+        <button><a href="http://localhost:5000/api/leave/accept/${leaveRequest._id}?name=${name}">Accept</a></button>
+      </p>
+    `;
+    // <a href="http://localhost:5000/api/leave/decline/${leaveRequest._id}?name=${name}">Decline</a>
+
+    // Send the leave request email to all users except the requester
+    console.log("email:",emailAddresses)
+    const emailPromises = emailAddresses.map(email => {
+      return transporter.sendMail({
+        from: auth.EMAIL_USER,
+        to: email,
+        subject: 'New msg',
+        html: emailMessage,
+      });
+    });
+
+    await Promise.all(emailPromises);
+
+    res.status(201).json({ message: `Leave request submitted and emails sent to ${emailAddresses.length} users.` });
+
+  } catch (error) {
+    console.error('Error submitting leave request:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// Get leave request details by ID
+// router.get('/leave/:id', async (req, res) => {
+//   try {
+//     const leaveRequest = await LeaveRequest.findById(req.params.id);
+//     if (!leaveRequest) return res.status(404).send('Leave request not found.');
+
+//     res.json({
+//       status: leaveRequest.status,
+//       acceptedBy: leaveRequest.acceptedBy,
+//       details: leaveRequest,
+//     });
+//   } catch (error) {
+//     res.status(500).send('Error fetching leave request details');
+//   }
+// });
+
+
+router.get('/accept/:id', async (req, res) => {
+  if (accepted) {
+    return res.send("Someone already accepted this Request...Thank you..🙂");
+  }
+  try {
+    const leaveRequest = await LeaveRequest.findById(req.params.id);
+    if (!leaveRequest) return res.status(404).send('Leave request not found.');
+    
+    accepted = true; // Mark the request as accepted
+    leaveRequest.status = 'Accepted';
+    await leaveRequest.save();
+
+    
+    leaveRequest.status = 'Accepted';
+    leaveRequest.acceptedBy = req.query.user; // Add the user who accepted
+    await leaveRequest.save();
+
+    // Send email to the requester
+    await transporter.sendMail({
+      from: auth.EMAIL_USER,
+      to: leaveRequest.email,
+      subject: 'CAR_response',
+      html: `<h4>Your Class Adjustment Request has been accepted by ${req.query.name}.</h4>`,
+    });
+
+    res.send(`Thank you...for Accepted the Class Adjustment Requeste from ${req.query.name}`);
+  } catch (error) {
+    console.error('Error updating leave request:', error);
+    res.status(500).send('Error updating leave request');
+  }
+});
+module.exports = router;
+
+
+
+
+
+
+19-08(1)----------------------------------------------------------------------------------------------------->
+
+
+const express = require('express');
+// const router = express.Router();
+// const LeaveRequest = require('../models/LeaveRequest');
+// const nodemailer = require('nodemailer');
+// const Register = require('../models/registrations'); // Updated to match the model import
+// const auth = require('../env.js');
+
+// const transporter = nodemailer.createTransport({
+//   service: 'gmail',
+//   auth: {
+//     user: auth.EMAIL_USER,
+//     pass: auth.EMAIL_PASS,
+//   },
+// });
+
+// let accepted = false; // Global flag to check if the request has been accepted
+
+// // Helper function to find the user's name by their email
+// async function findNameByEmail(email) {
+//   try {
+//     const user = await Register.findOne({ email: email }, 'name'); // Retrieve only the 'name' field
+//     console.log("name :",user)
+//     return user ? user.name : null;
+//   } catch (error) {
+//     console.error('Error finding user by email:', error);
+//     throw error;
+//   }
+// }
+
+
+
+// router.post('/', async (req, res) => {
+//   const { name, email, branch, facultyId, startDate, endDate, reason } = req.body;
+
+//   try {
+//     // Save the leave request to the database
+//     const leaveRequest = new LeaveRequest({ name, email, branch, facultyId, startDate, endDate, reason });
+//     await leaveRequest.save();
+
+//     // Fetch all users' emails to whom the leave request should be sent (excluding the requester)
+//     const users = await Register.find({ email: { $ne: email } }, 'email');
+//     const emailAddresses = users.map(user => user.email);
+
+//     const emailMessage = `
+//       <h3>Leave Request from ${name}</h3>
+//       <p>Reason: ${reason}</p>
+//       <p>Start Date: ${startDate}</p>
+//       <p>End Date: ${endDate}</p>
+//       <p>
+//         <button><a href="http://localhost:5000/api/leave/accept/${leaveRequest._id}?email=${email}">Accept</a></button>
+//       </p>
+//     `;
+
+//     // Send the leave request email to all users except the requester
+//     const emailPromises = emailAddresses.map(email => {
+//       return transporter.sendMail({
+//         from: auth.EMAIL_USER,
+//         to: email,
+//         subject: 'New msg',
+//         html: emailMessage,
+//       });
+//     });
+
+//     await Promise.all(emailPromises);
+
+//     res.status(201).json({ message: `Leave request submitted and emails sent to ${emailAddresses.length} users.` });
+
+//   } catch (error) {
+//     console.error('Error submitting leave request:', error);
+//     res.status(500).json({ error: 'Internal Server Error' });
+//   }
+// });
+
+// router.get('/accept/:id', async (req, res) => {
+//   if (accepted) {
+//     return res.send("Someone already accepted this request. Thank you.");
+//   }
+
+//   try {
+//     const leaveRequest = await LeaveRequest.findById(req.params.id);
+//     if (!leaveRequest) return res.status(404).send('Leave request not found.');
+
+//     const acceptingUserEmail = req.query.email; // Email of the user accepting the request
+//     const acceptingUserName = await findNameByEmail(acceptingUserEmail);
+
+//     accepted = true; // Mark the request as accepted
+//     leaveRequest.status = 'Accepted';
+//     leaveRequest.acceptedBy = acceptingUserName; // Store the name of the user who accepted
+//     await leaveRequest.save();
+//     console.log(acceptingUserName)
+
+//     // Send email to the requester
+//     await transporter.sendMail({
+//       from: auth.EMAIL_USER,
+//       to: leaveRequest.email,
+//       subject: 'Leave Request Accepted',
+//       html: `<h4>Your leave request has been accepted by ${acceptingUserName}.</h4>`,
+//     });
+
+//     res.send(`Leave request accepted by ${req.body.name}`);
+//   } catch (error) {
+//     console.error('Error updating leave request:', error);
+//     res.status(500).send('Error updating leave request');
+//   }
+// });
+
+// module.exports = router;
+
+
+
+
+------------------------------------------------------------------------------------------------------------------------
+
+
+name and mail --100%------19/08
+
+const express = require('express');
+const router = express.Router();
+const LeaveRequest = require('../models/LeaveRequest');
+const nodemailer = require('nodemailer');
+const Register = require('../models/registrations');
+const auth = require('../env.js');
+
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: auth.EMAIL_USER,
+    pass: auth.EMAIL_PASS,
+  },
+});
+
+router.post('/', async (req, res) => {
+  const { name, email, branch, facultyId, startDate, endDate, reason } = req.body;
+
+  try {
+    // Save the leave request to the database
+    const leaveRequest = new LeaveRequest({ name, email, branch, facultyId, startDate, endDate, reason });
+    await leaveRequest.save();
+
+    // Fetch all users' emails to whom the leave request should be sent, excluding the requester
+    const users = await Register.find({ email: { $ne: email } }, 'email');
+    const emailAddresses = users.map(user => user.email);
+
+    const emailMessage = `
+      <h3>Leave Request from ${name}</h3>
+      <p>Reason: ${reason}</p>
+      <p>Start Date: ${startDate}</p>
+      <p>End Date: ${endDate}</p>
+      <p>
+        <a href="http://localhost:5000/api/leave/accept/${leaveRequest._id}?acceptingEmail={{userEmail}}">Accept</a>
+      </p>
+    `;
+
+    // Send the leave request email to all users except the requester
+    const emailPromises = emailAddresses.map(userEmail => {
+      return transporter.sendMail({
+        from: auth.EMAIL_USER,
+        to: userEmail,
+        subject: 'New Leave Request',
+        html: emailMessage.replace('{{userEmail}}', userEmail),
+      });
+    });
+
+    await Promise.all(emailPromises);
+
+    res.status(201).json({ message: `Leave request submitted and emails sent to ${emailAddresses.length} users.` });
+  } catch (error) {
+    console.error('Error submitting leave request:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+router.get('/accept/:id', async (req, res) => {
+  try {
+    const leaveRequest = await LeaveRequest.findById(req.params.id);
+    if (!leaveRequest) return res.status(404).send('Leave request not found.');
+    
+    // Check if the request has already been accepted
+    if (leaveRequest.status === 'Accepted') {
+      return res.send("Someone already accepted this request.");
+    }
+
+    // Find the name of the user who accepted the request based on their email
+    const acceptingUser = await Register.findOne({ email: req.query.acceptingEmail });
+    if (acceptingUser) {
+      leaveRequest.acceptedBy = acceptingUser.name;
+    } else {
+      leaveRequest.acceptedBy = 'Unknown'; // Fallback if no match is found
+    }
+
+    // Mark the request as accepted and save
+    leaveRequest.status = 'Accepted';
+    await leaveRequest.save();
+
+    // Send email to the requester
+    await transporter.sendMail({
+      from: auth.EMAIL_USER,
+      to: leaveRequest.email,
+      subject: 'Leave Request Accepted',
+      html: `<h4>Your leave request has been accepted by ${leaveRequest.acceptedBy}.</h4>`,
+    });
+
+    res.send(`Leave request accepted by ${leaveRequest.acceptedBy}`);
+  } catch (error) {
+    console.error('Error updating leave request:', error);
+    res.status(500).send('Error updating leave request');
+  }
+});
+
+module.exports = router;
+
+
+
+-------------------------------------------------------------------------------------------------------------------------
+19/08
+
+
+const express = require('express');
+const router = express.Router();
+const LeaveRequest = require('../models/LeaveRequest');
+const nodemailer = require('nodemailer');
+const Register = require('../models/registrations');
+const auth = require('../env.js');
+
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: auth.EMAIL_USER,
+    pass: auth.EMAIL_PASS,
+  },
+});
+
+router.post('/', async (req, res) => {
+  const { name, email, branch, facultyId, startDate, endDate, reason } = req.body;
+
+  try {
+    // Save the leave request to the database
+    const leaveRequest = new LeaveRequest({ name, email, branch, facultyId, startDate, endDate, reason });
+    await leaveRequest.save();
+
+    // Fetch all users' emails to whom the leave request should be sent, excluding the requester
+    const users = await Register.find({ email: { $ne: email } }, 'email');
+    const emailAddresses = users.map(user => user.email);
+
+    const emailMessage = `
+      <h3>Leave Request from ${name}</h3>
+      <p>Reason: ${reason}</p>
+      <p>Start Date: ${startDate}</p>
+      <p>End Date: ${endDate}</p>
+      <p>
+        <a href="http://localhost:5000/api/leave/accept/${leaveRequest._id}?acceptingEmail={{userEmail}} ">Accept</a>
+      </p>
+    `;
+
+    // Send the leave request email to all users except the requester
+    const emailPromises = emailAddresses.map(userEmail => {
+      return transporter.sendMail({
+        from: auth.EMAIL_USER,
+        to: userEmail,
+        subject: 'New Leave Request',
+        html: emailMessage.replace('{{userEmail}}', userEmail),
+      });
+    });
+
+    await Promise.all(emailPromises);
+
+    res.status(201).json({ message: `Leave request submitted and emails sent to ${emailAddresses.length} users.` });
+  } catch (error) {
+    console.error('Error submitting leave request:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+router.get('/accept/:id', async (req, res) => {
+  try {
+    const leaveRequest = await LeaveRequest.findById(req.params.id);
+    if (!leaveRequest) return res.status(404).send('Leave request not found.');
+    
+    // Check if the request has already been accepted
+    if (leaveRequest.status === 'Accepted') {
+      return res.send(`<div style="color:red; margin:180px; background-color:yellow; padding:20px; border-radius:30px;" ><center><h1> oops!..Someone already accepted this request.🤧</h1></center></div>`); 
+    }
+
+    // Find the name of the user who accepted the request based on their email
+    const acceptingUser = await Register.findOne({ email: req.query.acceptingEmail });
+    if (acceptingUser) {
+      leaveRequest.acceptedBy = acceptingUser.name;
+    } else {
+      leaveRequest.acceptedBy = 'Unknown'; // Fallback if no match is found
+    }
+
+    // Mark the request as accepted and save
+    leaveRequest.status = 'Accepted';
+    await leaveRequest.save();
+
+    // Send email to the requester
+    await transporter.sendMail({
+      from: auth.EMAIL_USER,
+      to: leaveRequest.email,
+      subject: 'Leave Request Accepted',
+      html: `<h4>Your leave request has been accepted by ${leaveRequest.acceptedBy}.</h4>`,
+    });
+
+     res.send(`<div style="color:white; margin:180px; background-color:green; padding:16px; border-radius:30px;"><center><h2>You accepted the Leave request.👍.Thank You..🙂</h2></center></div>`);
+  } catch (error) {
+    console.error('Error updating leave request:', error);
+    res.status(500).send('Error updating leave request');
+  }
+});
+
+module.exports = router;
+
+----------------------------------------------------------------------------------------------------------------------------
+22-09
+leave.js
+
+const express = require('express');  
+const router = express.Router();  
+const LeaveRequest = require('../models/LeaveRequest');  
+const nodemailer = require('nodemailer');  
+const Register = require('../models/registrations');  
+const auth = require('../env.js');  
+const { format } = require('date-fns'); // Helper library for date formatting  
+
+// Nodemailer transporter setup  
+const transporter = nodemailer.createTransport({  
+  service: 'gmail',  
+  auth: {  
+    user: auth.EMAIL_USER,  
+    pass: auth.EMAIL_PASS,  
+  },  
+});  
+
+// Route to submit leave requests  
+router.post('/', async (req, res) => {  
+  const { year, sem, name, email, startDate, endDate, subj } = req.body;  
+
+  try {  
+    // Create and save the leave request  
+    const leaveRequest = new LeaveRequest({ name, email, sem, year, startDate, endDate, subj });  
+    await leaveRequest.save();  
+
+    // Notify users in the same semester and subject (excluding the requester)  
+    const users = await Register.find(  
+      { email: { $ne: email }, subj, sem, year },  
+      'email'  
+    );  
+
+    const emailAddresses = users.map(user => user.email);  
+
+    // Prepare email message for notification  
+    const emailMessage = `  
+      <h3>New Class Adjustment Request from ${name}</h3>  
+      <p>Subject: ${subj}</p>  
+      <p>From Start Date: ${format(new Date(startDate), 'MM/dd/yyyy')} TO End Date: ${format(new Date(endDate), 'MM/dd/yyyy')}</p>  
+      <p>  
+        <a href="http://localhost:5000/api/leave/accept/${leaveRequest._id}?acceptingEmail={{userEmail}}" style="padding: 10px; background-color: green; color: white; text-decoration: none;">Accept</a>  
+        <a href="http://localhost:5000/api/leave/reject/${leaveRequest._id}?rejectingEmail={{userEmail}}" style="padding: 10px; background-color: red; color: white; text-decoration: none;">Reject</a>  
+      </p>  
+    `;  
+
+    // Send notification emails to the relevant users  
+    await Promise.all(emailAddresses.map(userEmail => {  
+      return transporter.sendMail({  
+        from: auth.EMAIL_USER,  
+        to: userEmail,  
+        subject: 'New Class Adjustment Request',  
+        html: emailMessage.replace('{{userEmail}}', userEmail),  
+      });  
+    }));  
+
+    res.status(201).json({ message: `Request submitted and notifications sent to ${emailAddresses.length} users.` });  
+  } catch (error) {  
+    console.error('Error submitting leave request:', error);  
+    res.status(500).json({ error: 'Internal Server Error' });  
+  }  
+});  
+
+// Accept request  
+router.get('/accept/:id', async (req, res) => {  
+
+  try {  
+    const leaveRequest = await LeaveRequest.findById(req.params.id);  
+    if (!leaveRequest) return res.status(404).send('Class Adjustment Request not found.');  
+    
+    if (leaveRequest.status === 'Accepted') {  
+      return res.send('Request has already been accepted.');  
+    } 
+
+    // Update leave request status and save  
+    leaveRequest.status = 'Accepted';  
+    leaveRequest.acceptedBy = req.query.acceptingEmail; // Only one user can accept  
+    await leaveRequest.save();  
+
+    // Fetch details of the user who accepted the request  
+    const acceptingUser = await Register.findOne({ email: leaveRequest.acceptedBy }, 'name year sem subj');  
+
+    // Notify the requester with the details of who accepted the request  
+    await transporter.sendMail({  
+      from: auth.EMAIL_USER,  
+      to: leaveRequest.email,  
+      subject: 'Class Adjustment Request Accepted',  
+      html: `<h4>Your request has been accepted by ${acceptingUser.name}.</h4>  
+             <p>Details:</p>  
+             <ul>  
+               <li>Name: ${acceptingUser.name}</li>  
+               <li>Year: ${acceptingUser.year}</li>  
+               <li>Semester: ${acceptingUser.sem}</li>  
+               <li>Subject: ${acceptingUser.subj}</li>  
+             </ul>`,  
+    });  
+
+    res.send('Request accepted successfully.');  
+  } catch (error) {  
+    console.error('Error accepting Class Adjustment Request:', error);  
+    res.status(500).send('Error accepting request');  
+  }  
+});  
+
+// Reject leave request  
+router.get('/reject/:id', async (req, res) => {  
+  try {  
+    const leaveRequest = await LeaveRequest.findById(req.params.id);  
+    if (!leaveRequest) return res.status(404).send('Leave Request not found.');  
+
+    if (leaveRequest.status === 'Accepted') {  
+      return res.send('Request has already been accepted.');  
+    }  
+
+    leaveRequest.status = 'Declined';  
+    await leaveRequest.save();  
+
+    await transporter.sendMail({  
+      from: auth.EMAIL_USER,  
+      to: leaveRequest.email,  
+      subject: 'Class Adjustment Request Declined',  
+      html: `<p>Your Class Adjustment Request has been declined.</p>`,  
+    });  
+
+    const users = await Register.find({  
+      email: { $ne: leaveRequest.email },  
+      sem: leaveRequest.sem,  
+      year: leaveRequest.year,  
+    }, 'email');  
+
+    const emailAddresses = users.map(user => user.email);  
+    const emailMessage = `  
+      <h3>Class Adjustment Request Declined</h3>  
+      <p>Requested from: ${leaveRequest.name}</p>  
+      <p>Subject: ${leaveRequest.subj}</p>  
+      <p>From Start Date: ${format(new Date(leaveRequest.startDate), 'MM/dd/yyyy')}   
+         TO End Date: ${format(new Date(leaveRequest.endDate), 'MM/dd/yyyy')}</p>  
+      <p>  
+        <a href="http://localhost:5000/api/leave/accept/${leaveRequest._id}?acceptingEmail={{userEmail}}"   
+           style="padding: 10px; background-color: green; color: white; text-decoration: none;">Accept</a>  
+      </p>  
+    `;  
+
+    await Promise.all(emailAddresses.map(userEmail => {  
+      return transporter.sendMail({  
+        from: auth.EMAIL_USER,  
+        to: userEmail,  
+        subject: 'New Class Adjustment Request',  
+        html: emailMessage.replace(/{{userEmail}}/g, userEmail),  
+      });  
+    }));  
+
+    res.send('The request has been declined and users notified.');  
+  } catch (error) {  
+    console.error('Error rejecting leave request:', error);  
+    res.status(500).send('Error rejecting request');  
+  } } );
+
+module.exports = router;
+
+
+------------------------------------------------------------------------------------------------------------------
+leave.js----------------------------90%
+
+const express = require('express');  
+const router = express.Router();  
+const LeaveRequest = require('../models/LeaveRequest'); // Ensure this is the correct model  
+const nodemailer = require('nodemailer');  
+const Register = require('../models/registrations'); // Ensure this is the correct model  
+const auth = require('../env.js');  
+const { format } = require('date-fns'); // Date formatting library  
+
+// Configure Nodemailer transporter  
+const transporter = nodemailer.createTransport({  
+  service: 'gmail',  
+  auth: {  
+    user: auth.EMAIL_USER,  
+    pass: auth.EMAIL_PASS,  
+  },  
+});  
+
+// Helper function to send an email  
+const sendEmail = async (to, subject, html) => {  
+  return transporter.sendMail({  
+    from: auth.EMAIL_USER,  
+    to,  
+    subject,  
+    html,  
+  });  
+};  
+
+// Route to submit a leave request  
+router.post('/', async (req, res) => {  
+  const { year, sem, name, email, startDate, endDate, subj } = req.body;  
+
+  try {  
+    const leaveRequest = new LeaveRequest({ name, email, sem, year, startDate, endDate, subj });  
+    await leaveRequest.save();  
+    
+    const users = await Register.find({ email: { $ne: email }, subj, sem, year }, 'email');  
+    const emailAddresses = users.map(user => user.email);  
+
+    const emailMessage = `<div style="display:flex;align-items:center;justify-content:center; color:white; background-color:blue; border:2px solid yellow; "> 
+      <div style="padding:10px;margin:10px; ">
+      <h3>Class Adjustment Request from ___ <b style="color:black; font-size:20px;">${name}</b>...👋!___</h3>  
+      <p>Subject Name: <b style="font-size:15px;">${subj}</b></p>  
+      <p>Subject Semister:<b  style="font-size:15px;" > ${sem}</b></p> 
+      <p>Subject Year: <b  style="font-size:15px">${year}</b></p> 
+      <p>Class Adjustment From Start Date: <b  style="font-size:15px">${format(new Date(startDate), 'dd/MM/yyyy')}  </b>
+         TO End Date:<b  style="font-size:15px"> ${format(new Date(endDate), 'dd/MM/yyyy')}</b></p>  <br><br>
+      <p>  
+        <a href="http://localhost:5000/api/leave/accept/${leaveRequest._id}?acceptingEmail={{userEmail}}"   
+           style="padding: 10px; background-color: green; color: white; text-decoration: none;">Accept</a>  
+        <a href="http://localhost:5000/api/leave/reject/${leaveRequest._id}?rejectingEmail={{userEmail}}"   
+           style="padding: 10px; background-color: red; color: white; text-decoration: none;">Reject</a>  
+      </p></div></div>`;  
+
+    await Promise.all(emailAddresses.map(userEmail =>   
+      sendEmail(userEmail, 'New Class_Adjustment-Request_1', emailMessage.replace('{{userEmail}}', userEmail))  
+    ));  
+
+    res.status(201).json({ message: `Request submitted and notifications sent to ${emailAddresses.length} users.` });  
+  } catch (error) {  
+    console.error('Error submitting leave request:', error);  
+    res.status(500).json({ error: 'Internal Server Error' });  
+  }  
+});  
+
+// Route to accept a leave request  
+router.get('/accept/:id', async (req, res) => {  
+  try {  
+    const leaveRequest = await LeaveRequest.findById(req.params.id);  
+    if (!leaveRequest) return res.status(404).send('Class Adjustment Request not found.');  
+
+    if (leaveRequest.status === 'Accepted') {  
+      return res.send('Oops! This request has already been accepted by someone.☹️');  
+    }  
+
+    leaveRequest.status = 'Accepted';  
+    leaveRequest.acceptedBy = req.query.acceptingEmail;  
+    await leaveRequest.save();  
+
+    const acceptingUser = await Register.findOne({ email: leaveRequest.acceptedBy }, 'name year sem subj');  
+
+    await sendEmail(leaveRequest.email, 'Class Adjustment Request Accepted_1', `  
+      <div style="background-color:green; border:2px solid yellow; display:flex;align-items:center;justify-content:center; color:white;">
+      <div style="margin:10px; padding:20px; ">
+      <h2>Your request has been accepted by <b style="color:black; font-size:20px;">${acceptingUser.name}.</b>...!👋</h2>  
+      <h2 style="color:yellow;">Details:</h2>  
+      <ul>  
+        <li style="color:white;">Faculty Name : ${acceptingUser.name}</li>  
+        <li>Year         : ${acceptingUser.year}</li>  
+        <li>Semester     : ${acceptingUser.sem}</li>  
+        <li>Subject      : ${acceptingUser.subj}</li>  
+      </ul></div><div>`);  
+
+    res.send('You accepted the request successfully. Thank you..👍');  
+  } catch (error) {  
+    console.error('Error accepting Class Adjustment Request:', error);  
+    res.status(500).send('Error accepting request');  
+  }  
+});  
+
+// Route to reject a leave request  
+router.get('/reject/:id', async (req, res) => {  
+  try {  
+    const leaveRequest = await LeaveRequest.findById(req.params.id);  
+    if (!leaveRequest) return res.status(404).send('Leave Request not found.');  
+
+    if (leaveRequest.status === 'Accepted') {  
+      return res.send('Oops! This request has already been accepted by someone.☹️');  
+    }  
+
+    leaveRequest.status = 'Declined';  
+    await leaveRequest.save(); 
+
+    // const register = new Register({ name, email, sem, year, startDate, endDate, subj }); 
+
+
+    // await sendEmail(leaveRequest.email, 'Class Adjustment Request_1 Declined', `  
+    //   <div style="background-color:black;border:2px solid red; display:flex;align-items:center;justify-content:center; color:white">
+    //   <div style="margin:10px;paddind:20px;"  >
+    //   <h4 style="color:red;">Your Class Adjustment Request has been declined.!!!!!</h4>
+    //   <p>Details:</p>  
+    //   <ul>  
+    //     <li>Faculty Name: ${register.name}</li>  
+    //     <li>Year: ${register.year}</li>  
+    //     <li>Semester: ${register.sem}</li>  
+    //     <li>Subject: ${register.subj}</li>  
+    //   </ul></div></div>`);  
+
+    const users = await Register.find({ email: { $ne: leaveRequest.email }, sem: leaveRequest.sem, year: leaveRequest.year,subj:{$ne:leaveRequest.subj}}, 'email');  
+    const emailAddresses = users.map(user => user.email);  
+
+    const emailMessage = `  <div style="background-color:blue; border:2px solid yellow; display:flex;align-items:center;justify-content:center; color:white;">
+      <div style="margin:10px; padding:20px;">
+      <h3>Class Adjustment Request_2</h3>  
+      <p>Requested from:<b> ${leaveRequest.name}</b></p>  
+      <p>Subject: <b>${leaveRequest.subj}</b></p>  
+      <p>Semester: <b>${leaveRequest.sem}</b></p>  
+      <p>Year: <b>${leaveRequest.year}</b></p>  
+      <p>ClassAjustment From Start Date: <b>${format(new Date(leaveRequest.startDate), 'dd/MM/yyyy')} </b>
+         TO End Date: <b>${format(new Date(leaveRequest.endDate), 'dd/MM/yyyy')} </b></p> 
+      <p>  
+        <a href="http://localhost:5000/api/leave/accept/${leaveRequest._id}?acceptingEmail={{userEmail}}"  
+           style="padding: 10px; background-color: green; color: white; text-decoration: none;">Accept</a>  
+      </p></div></div>`;  
+    
+    await Promise.all(emailAddresses.map(userEmail =>   
+      sendEmail(userEmail, 'Class Adjustment Request_2', emailMessage.replace('{{userEmail}}', userEmail))  
+    ));  
+
+    res.send('<h2>The request has been declined and users notified,Thank you...</h2>');  
+  } catch (error) {  
+    console.error('Error rejecting leave request:', error);  
+    res.status(500).send('Error rejecting request');  
+  }  
+});  
+
+module.exports = router;
